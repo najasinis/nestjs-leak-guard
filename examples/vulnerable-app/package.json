@@ -1,0 +1,13 @@
+{
+  "name": "nestjs-leak-guard-vulnerable-app",
+  "private": true,
+  "version": "1.0.0",
+  "description": "e2e 검증용 취약한 앱 예제",
+  "scripts": {
+    "scan": "nestjs-leak-guard scan ./src",
+    "scan:json": "nestjs-leak-guard scan ./src --output=json"
+  },
+  "devDependencies": {
+    "nestjs-leak-guard": "file:../.."
+  }
+}

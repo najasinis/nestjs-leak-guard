@@ -1,0 +1,20 @@
+{
+  "_comment": "Self-dogfooding: nestjs-leak-guard scans itself",
+  "rules": {
+    "missing-tenant-filter": "off",
+    "raw-query-with-input": "error",
+    "password-logging": "error",
+    "env-logging": "warn",
+    "public-on-sensitive-endpoint": "off",
+    "cross-tenant-id-passing": "off",
+    "enum-modify-existing": "warn",
+    "column-drop-with-data": "warn"
+  },
+  "exclude": [
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/fixtures/**",
+    "**/node_modules/**",
+    "**/dist/**"
+  ]
+}

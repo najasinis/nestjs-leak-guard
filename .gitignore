@@ -1,0 +1,50 @@
+# Build output
+dist/
+build/
+out/
+
+# Dependencies
+node_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Jest cache
+.jest-cache/
+
+# Scan output artifacts
+*.sarif
+leak-guard-report.json
+leak-guard-report.md
+
+# Temporary files
+*.tmp
+*.temp
