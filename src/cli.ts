@@ -58,7 +58,8 @@ program
       reporter.report(results, summary);
 
       if (shouldFail(summary, options.failOn)) {
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
     } catch (err) {
       process.stderr.write(`[nestjs-leak-guard] Fatal error: ${err}\n`);

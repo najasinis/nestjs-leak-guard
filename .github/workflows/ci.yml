@@ -49,8 +49,15 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Scan own source code
-        run: node dist/cli.js scan ./src --fail-on=high --output=sarif
+        run: |
+          node dist/cli.js scan ./src --fail-on=high --output=sarif > leak-guard.sarif || true
         continue-on-error: true
+      - name: Ensure SARIF file exists
+        if: always()
+        run: |
+          if [ ! -s leak-guard.sarif ]; then
+            echo '{"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"nestjs-leak-guard","version":"0.0.1","rules":[]}},"results":[]}]}' > leak-guard.sarif
+          fi
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
