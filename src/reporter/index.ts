@@ -1,14 +1,23 @@
 import type { ScanResult, ScanSummary, OutputFormat } from '../types';
+import { TextReporter } from './text';
+import { JsonReporter } from './json';
+import { SarifReporter } from './sarif';
+import { MarkdownReporter } from './markdown';
 
-/** 모든 리포터가 구현하는 인터페이스 */
 export interface Reporter {
   report(results: ScanResult[], summary: ScanSummary): void;
 }
 
-/**
- * 출력 포맷에 따라 적절한 Reporter 인스턴스 반환.
- */
-export function createReporter(format: OutputFormat, options?: { noColor?: boolean; quiet?: boolean }): Reporter {
-  // TODO: switch(format) → TextReporter / JsonReporter / SarifReporter / MarkdownReporter
-  throw new Error('createReporter: not implemented');
+export function createReporter(
+  format: OutputFormat,
+  options?: { noColor?: boolean; quiet?: boolean },
+): Reporter {
+  switch (format) {
+    case 'json':     return new JsonReporter();
+    case 'sarif':    return new SarifReporter();
+    case 'markdown': return new MarkdownReporter();
+    case 'text':
+    default:
+      return new TextReporter(options?.noColor, options?.quiet);
+  }
 }
