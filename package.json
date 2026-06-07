@@ -2,7 +2,14 @@
   "name": "nestjs-leak-guard",
   "version": "0.0.1",
   "description": "Static analysis CLI to detect data-leak risk patterns in NestJS code",
-  "keywords": ["nestjs", "security", "static-analysis", "data-leak", "tenant", "linter"],
+  "keywords": [
+    "nestjs",
+    "security",
+    "static-analysis",
+    "data-leak",
+    "tenant",
+    "linter"
+  ],
   "author": "Jinyeong Jung",
   "license": "MIT",
   "repository": {
