@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { LeakGuardConfig, RuleLevel, PatternId } from './types';
 
-// 설정 파일을 찾지 못했을 때 사용하는 기본값
 export const DEFAULT_CONFIG: LeakGuardConfig = {
   rules: {
     'missing-tenant-filter': 'error',
@@ -26,37 +25,83 @@ export const DEFAULT_CONFIG: LeakGuardConfig = {
   tsconfig: 'tsconfig.json',
 };
 
+const VALID_PATTERN_IDS = new Set<string>([
+  'missing-tenant-filter', 'raw-query-with-input', 'password-logging',
+  'env-logging', 'public-on-sensitive-endpoint', 'cross-tenant-id-passing',
+  'enum-modify-existing', 'column-drop-with-data',
+]);
+
 /**
  * .leak-guard.json (또는 --config 경로) 파일을 읽어 DEFAULT_CONFIG와 머지.
- *
- * 탐색 순서:
- *   1. configPath가 명시된 경우 → 해당 경로
- *   2. cwd() 기준으로 .leak-guard.json 탐색
- *   3. 없으면 DEFAULT_CONFIG 반환
  */
 export function loadConfig(configPath?: string, cwd = process.cwd()): LeakGuardConfig {
-  // TODO: configPath 또는 cwd/.leak-guard.json 읽기
-  // TODO: JSON.parse 후 DEFAULT_CONFIG와 deep merge
-  // TODO: rules 유효성 검증 (알 수 없는 패턴 ID 경고)
-  throw new Error('loadConfig: not implemented');
+  const configFile = configPath ?? path.join(cwd, '.leak-guard.json');
+
+  if (!fs.existsSync(configFile)) {
+    return { ...DEFAULT_CONFIG, rules: { ...DEFAULT_CONFIG.rules } };
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+  } catch (e) {
+    process.stderr.write(`[nestjs-leak-guard] Failed to parse ${configFile}: ${e}\n`);
+    return { ...DEFAULT_CONFIG, rules: { ...DEFAULT_CONFIG.rules } };
+  }
+
+  if (typeof raw !== 'object' || raw === null) {
+    return { ...DEFAULT_CONFIG, rules: { ...DEFAULT_CONFIG.rules } };
+  }
+
+  const partial = raw as Partial<LeakGuardConfig>;
+
+  if (partial.rules) {
+    for (const key of Object.keys(partial.rules)) {
+      if (!VALID_PATTERN_IDS.has(key)) {
+        process.stderr.write(`[nestjs-leak-guard] Unknown pattern ID in config: "${key}"\n`);
+      }
+    }
+  }
+
+  return {
+    ...DEFAULT_CONFIG,
+    ...partial,
+    rules: { ...DEFAULT_CONFIG.rules, ...(partial.rules ?? {}) },
+    // merge excludes so default spec/test exclusions are always active
+    exclude: [
+      ...DEFAULT_CONFIG.exclude,
+      ...(partial.exclude ?? []).filter((e) => !DEFAULT_CONFIG.exclude.includes(e)),
+    ],
+  };
 }
 
 /**
- * tenantShield: true 시 package.json에서 nestjs-tenant-shield 설치 여부 확인.
- * 설치되어 있으면 config.tenantShield = true를 확정.
+ * package.json에서 nestjs-tenant-shield 설치 여부 확인.
  */
 export function detectTenantShield(config: LeakGuardConfig, cwd = process.cwd()): LeakGuardConfig {
-  // TODO: cwd/package.json 읽기
-  // TODO: dependencies 또는 devDependencies에 config.tenantShieldImport 있는지 확인
-  // TODO: 있으면 config.tenantShield = true 반환
-  throw new Error('detectTenantShield: not implemented');
+  const pkgPath = path.join(cwd, 'package.json');
+
+  if (!fs.existsSync(pkgPath)) return config;
+
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const allDeps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+    if (config.tenantShieldImport in allDeps) {
+      return { ...config, tenantShield: true };
+    }
+  } catch {
+    // ignore — non-fatal
+  }
+
+  return config;
 }
 
 /**
  * RuleLevel → Severity 변환.
- * 'error' → 'high', 'warn' → 'medium', 'off' → 스킵 (호출자가 처리)
  */
 export function ruleLevelToSeverity(level: RuleLevel): 'high' | 'medium' {
-  // TODO: 매핑 반환
-  throw new Error('ruleLevelToSeverity: not implemented');
+  return level === 'error' ? 'high' : 'medium';
 }

@@ -1,34 +1,91 @@
+import { Node, SyntaxKind, SourceFile, CallExpression } from 'ts-morph';
 import { BasePattern } from './base';
 import type { PatternContext, ScanResult } from '../types';
 
-/**
- * [P1-HIGH] env-logging
- *
- * 감지: 로깅 호출 인자에 process.env.* 가 포함된 경우.
- *       환경변수에는 시크릿이 담기므로 로그로 유출되면 위험.
- *
- * 통과:
- *   - NODE_ENV, PORT, LOG_LEVEL 등 비시크릿 변수는 허용 목록으로 관리
- *   - 마커
- */
 export class EnvLoggingPattern extends BasePattern {
   readonly id = 'env-logging' as const;
   readonly level = 'high' as const;
   readonly description = 'process.env variable passed to logger — potential secret exposure';
 
-  // 로그에 찍어도 안전한 비시크릿 환경변수 (허용 목록)
   private static readonly SAFE_ENV_VARS = new Set([
     'NODE_ENV', 'PORT', 'LOG_LEVEL', 'TZ', 'HOSTNAME',
   ]);
 
+  private static readonly LOGGING_METHODS = ['log', 'error', 'warn', 'debug', 'verbose', 'info'];
+
   protected analyzeFile(context: PatternContext): ScanResult[] {
-    // pseudo:
-    // 1. 로깅 CallExpression 수집 (password-logging과 동일 탐지 로직 재사용)
-    // 2. 인자 재귀 탐색 중 PropertyAccessExpression 발견 시:
-    //    a. 체인이 process.env.XXX 형태인지 확인
-    //    b. XXX가 SAFE_ENV_VARS에 없으면 → 위험
-    // 3. makeResult 생성
-    //    suggestion: "Avoid logging env vars directly. Log a masked value or boolean check."
-    return [];
+    if (!context.sourceFile) return [];
+
+    const sourceFile = context.sourceFile as SourceFile;
+    const results: ScanResult[] = [];
+
+    sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).forEach((callExpr) => {
+      if (!this.isLoggingCall(callExpr)) return;
+
+      for (const arg of callExpr.getArguments()) {
+        const envVar = this.findUnsafeEnvAccess(arg);
+        if (envVar) {
+          const lc = sourceFile.compilerNode.getLineAndCharacterOfPosition(callExpr.getStart());
+          results.push(this.makeResult(
+            context.filePath,
+            lc.line + 1,
+            lc.character + 1,
+            `process.env.${envVar} logged directly — potential secret exposure`,
+            callExpr.getText().slice(0, 120),
+            'Avoid logging env vars directly. Log a boolean check or masked value instead.',
+          ));
+          break;
+        }
+      }
+    });
+
+    return results;
+  }
+
+  private isLoggingCall(callExpr: CallExpression): boolean {
+    const expr = callExpr.getExpression();
+    if (Node.isPropertyAccessExpression(expr)) {
+      return EnvLoggingPattern.LOGGING_METHODS.includes(expr.getName());
+    }
+    return false;
+  }
+
+  private findUnsafeEnvAccess(node: Node): string | null {
+    // process.env.VAR_NAME
+    if (Node.isPropertyAccessExpression(node)) {
+      const inner = node.getExpression();
+      if (Node.isPropertyAccessExpression(inner)) {
+        const root = inner.getExpression();
+        if (Node.isIdentifier(root) && root.getText() === 'process' && inner.getName() === 'env') {
+          const varName = node.getName();
+          if (!EnvLoggingPattern.SAFE_ENV_VARS.has(varName)) return varName;
+          return null;
+        }
+      }
+    }
+
+    // process.env['VAR_NAME']
+    if (Node.isElementAccessExpression(node)) {
+      const inner = node.getExpression();
+      if (Node.isPropertyAccessExpression(inner)) {
+        const root = inner.getExpression();
+        if (Node.isIdentifier(root) && root.getText() === 'process' && inner.getName() === 'env') {
+          const argExpr = node.getArgumentExpression();
+          if (argExpr && Node.isStringLiteral(argExpr)) {
+            const varName = argExpr.getLiteralValue();
+            if (!EnvLoggingPattern.SAFE_ENV_VARS.has(varName)) return varName;
+          } else {
+            return 'DYNAMIC_KEY';
+          }
+        }
+      }
+    }
+
+    for (const child of node.getChildren()) {
+      const result = this.findUnsafeEnvAccess(child);
+      if (result) return result;
+    }
+
+    return null;
   }
 }

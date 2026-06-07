@@ -1,22 +1,12 @@
+import { Node, SyntaxKind, SourceFile, CallExpression } from 'ts-morph';
 import { BasePattern } from './base';
 import type { PatternContext, ScanResult } from '../types';
 
-/**
- * [P1-HIGH] password-logging
- *
- * 감지: console.log/error/warn 또는 NestJS Logger 메서드 호출에서
- *       민감 필드명(password, pwd, secret, token 등)을 포함하는 경우.
- *
- * 통과:
- *   - 마스킹 헬퍼 사용: maskPassword(user.password)
- *   - 마커
- */
 export class PasswordLoggingPattern extends BasePattern {
   readonly id = 'password-logging' as const;
   readonly level = 'high' as const;
   readonly description = 'Sensitive field (password/secret/token) passed to logger — credential exposure risk';
 
-  // 민감 필드명 키워드 (소문자 매칭)
   private static readonly SENSITIVE_KEYWORDS = [
     'password', 'pwd', 'passwd',
     'secret', 'apikey', 'api_key',
@@ -26,22 +16,77 @@ export class PasswordLoggingPattern extends BasePattern {
     'credential',
   ];
 
-  // 로깅 함수명
-  private static readonly LOGGING_METHODS = [
-    'log', 'error', 'warn', 'debug', 'verbose', 'info',
-  ];
+  private static readonly LOGGING_METHODS = ['log', 'error', 'warn', 'debug', 'verbose', 'info'];
 
   protected analyzeFile(context: PatternContext): ScanResult[] {
-    // pseudo:
-    // 1. SourceFile에서 CallExpression 수집
-    // 2. 호출 대상이 로깅 메서드인지 확인
-    //    → console.log, this.logger.log, Logger.log 등
-    // 3. 호출 인자(Arguments)를 재귀 탐색:
-    //    a. PropertyAccessExpression에서 name.text 를 SENSITIVE_KEYWORDS와 소문자 비교
-    //    b. TemplateExpression 내부 TemplateSpan도 탐색
-    //    c. StringLiteral에 키워드 포함 여부도 확인
-    // 4. 키워드 발견 시 makeResult 생성
-    //    suggestion: "Never log sensitive fields. Use maskSensitive(value) helper."
-    return [];
+    if (!context.sourceFile) return [];
+
+    const sourceFile = context.sourceFile as SourceFile;
+    const results: ScanResult[] = [];
+
+    sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).forEach((callExpr) => {
+      if (!this.isLoggingCall(callExpr)) return;
+
+      for (const arg of callExpr.getArguments()) {
+        const found = this.findSensitiveKeyword(arg);
+        if (found) {
+          const lc = sourceFile.compilerNode.getLineAndCharacterOfPosition(callExpr.getStart());
+          results.push(this.makeResult(
+            context.filePath,
+            lc.line + 1,
+            lc.character + 1,
+            `Sensitive field "${found}" passed to logger — credential exposure risk`,
+            callExpr.getText().slice(0, 120),
+            'Never log sensitive fields. Use maskSensitive(value) or log only a boolean/length.',
+          ));
+          break;
+        }
+      }
+    });
+
+    return results;
+  }
+
+  private isLoggingCall(callExpr: CallExpression): boolean {
+    const expr = callExpr.getExpression();
+    if (Node.isPropertyAccessExpression(expr)) {
+      return PasswordLoggingPattern.LOGGING_METHODS.includes(expr.getName());
+    }
+    if (Node.isIdentifier(expr)) {
+      return PasswordLoggingPattern.LOGGING_METHODS.includes(expr.getText());
+    }
+    return false;
+  }
+
+  private findSensitiveKeyword(node: Node): string | null {
+    if (Node.isPropertyAccessExpression(node)) {
+      const name = node.getName().toLowerCase();
+      for (const kw of PasswordLoggingPattern.SENSITIVE_KEYWORDS) {
+        if (name === kw || name.includes(kw)) return node.getName();
+      }
+    }
+
+    if (Node.isStringLiteral(node)) {
+      const text = node.getLiteralValue().toLowerCase();
+      for (const kw of PasswordLoggingPattern.SENSITIVE_KEYWORDS) {
+        if (text.includes(kw)) return kw;
+      }
+    }
+
+    if (Node.isTemplateExpression(node)) {
+      for (const span of node.getTemplateSpans()) {
+        const result = this.findSensitiveKeyword(span.getExpression());
+        if (result) return result;
+      }
+      return null;
+    }
+
+    // Avoid recursing into deeply nested trees that aren't logging arguments
+    for (const child of node.getChildren()) {
+      const result = this.findSensitiveKeyword(child);
+      if (result) return result;
+    }
+
+    return null;
   }
 }
