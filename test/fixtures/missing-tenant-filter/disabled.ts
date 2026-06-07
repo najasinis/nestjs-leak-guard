@@ -10,9 +10,8 @@ export class DisabledService {
     private readonly repo: Repository<any>,
   ) {}
 
-  // 마커가 있으므로 감지에서 제외되어야 함
-  // nestjs-leak-guard-disable-next-line missing-tenant-filter
   async systemScan() {
+    // nestjs-leak-guard-disable-next-line missing-tenant-filter
     return this.repo.find(); // 시스템 cron 작업 — 의도적
   }
 }
