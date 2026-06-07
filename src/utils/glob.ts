@@ -2,28 +2,57 @@ import { glob } from 'glob';
 import * as path from 'path';
 import type { LeakGuardConfig } from '../types';
 
+const ALWAYS_IGNORE = ['**/node_modules/**', '**/dist/**', '**/.git/**'];
+
 /**
  * 지정 경로 하위의 스캔 대상 파일 목록 수집.
- *
- * - .ts 파일 (테스트 파일은 config.exclude로 제외)
- * - .sql 파일 (마이그레이션 분석용)
- * - node_modules, dist 등 항상 제외
  */
 export async function collectFilesFromPath(
   scanPath: string,
   config: LeakGuardConfig,
 ): Promise<string[]> {
-  // TODO: glob(`${scanPath}/**/*.{ts,sql}`) 실행
-  // TODO: config.exclude 패턴 → micromatch 또는 glob의 ignore 옵션으로 필터
-  // TODO: 항상 제외: node_modules/, dist/, .git/
-  // TODO: 절대 경로 배열 반환
-  throw new Error('collectFilesFromPath: not implemented');
+  const absolutePath = path.resolve(scanPath);
+  const files = await glob(`${absolutePath}/**/*.{ts,sql}`, {
+    ignore: [...ALWAYS_IGNORE, ...config.exclude],
+    absolute: true,
+    nodir: true,
+  });
+  return files.sort();
 }
 
 /**
  * 단일 파일이 config.exclude 패턴에 해당하는지 확인.
  */
 export function isExcluded(filePath: string, excludePatterns: string[]): boolean {
-  // TODO: micromatch(filePath, excludePatterns) 또는 minimatch 사용
-  throw new Error('isExcluded: not implemented');
+  const normalized = filePath.replace(/\\/g, '/');
+  const patterns = [...ALWAYS_IGNORE, ...excludePatterns];
+  return patterns.some((pattern) => matchGlob(normalized, pattern.replace(/\\/g, '/')));
+}
+
+function matchGlob(filePath: string, pattern: string): boolean {
+  let re = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const ch = pattern[i];
+    if (ch === '*' && i + 1 < pattern.length && pattern[i + 1] === '*') {
+      re += '.*';
+      i += 2;
+      if (i < pattern.length && pattern[i] === '/') {
+        i++; // consume — .* already covers separators
+      }
+    } else if (ch === '*') {
+      re += '[^/]*';
+      i++;
+    } else if (ch === '?') {
+      re += '[^/]';
+      i++;
+    } else if (/[.+^${}()|[\]\\]/.test(ch)) {
+      re += '\\' + ch;
+      i++;
+    } else {
+      re += ch;
+      i++;
+    }
+  }
+  return new RegExp(`(^|/)${re}(/.*)?$`).test(filePath);
 }

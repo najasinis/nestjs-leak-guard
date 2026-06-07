@@ -6,17 +6,30 @@ import * as path from 'path';
  * 절대 경로 배열. Git 레포가 아니거나 staged 파일이 없으면 [].
  */
 export function getGitStagedFiles(cwd = process.cwd()): string[] {
-  // TODO: execSync('git diff --staged --name-only', { cwd })
-  // TODO: stdout을 줄 단위 split
-  // TODO: 빈 줄 제거 + path.resolve(cwd, file) 절대 경로 변환
-  // TODO: .ts 또는 .sql 확장자만 필터
-  throw new Error('getGitStagedFiles: not implemented');
+  try {
+    const output = execSync('git diff --staged --name-only', {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    return output
+      .split('\n')
+      .map((f) => f.trim())
+      .filter((f) => f.length > 0 && (f.endsWith('.ts') || f.endsWith('.sql')))
+      .map((f) => path.resolve(cwd, f));
+  } catch {
+    return [];
+  }
 }
 
 /**
  * 현재 디렉토리가 git 레포인지 확인.
  */
 export function isGitRepo(cwd = process.cwd()): boolean {
-  // TODO: execSync('git rev-parse --git-dir', { cwd, stdio: 'ignore' }) 성공 여부 확인
-  throw new Error('isGitRepo: not implemented');
+  try {
+    execSync('git rev-parse --git-dir', { cwd, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
 }
