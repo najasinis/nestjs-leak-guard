@@ -3,7 +3,7 @@ import * as path from 'path';
 
 /**
  * git diff --staged --name-only 로 staged 파일 목록 반환.
- * 절대 경로 배열. Git 레포가 아니거나 staged 파일이 없으면 [].
+ * 절대 경로 배열. Git 레포가 아니거나 staged 파일이 없으면  [].
  */
 export function getGitStagedFiles(cwd = process.cwd()): string[] {
   try {
